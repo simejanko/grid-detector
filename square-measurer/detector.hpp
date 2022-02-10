@@ -1,0 +1,9 @@
+#ifndef OPENCV_TOY_PROJECT_DETECTOR_HPP
+#define OPENCV_TOY_PROJECT_DETECTOR_HPP
+
+
+class SquarePatternDetector {
+};
+
+
+#endif //OPENCV_TOY_PROJECT_DETECTOR_HPP

@@ -1,0 +1,9 @@
+#ifndef OPENCV_TOY_PROJECT_MEASURER_HPP
+#define OPENCV_TOY_PROJECT_MEASURER_HPP
+
+
+class SquarePatternMeasurer {
+};
+
+
+#endif //OPENCV_TOY_PROJECT_MEASURER_HPP
