@@ -2,7 +2,7 @@
 #define OPENCV_TOY_PROJECT_MEASURER_HPP
 
 
-class SquarePatternMeasurer {
+class SquareGridMeasurer {
 };
 
 
