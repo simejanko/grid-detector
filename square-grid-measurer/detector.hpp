@@ -7,7 +7,8 @@
 
 class SquareGridDetector {
 public:
-    explicit SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines=5,
+    explicit SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines=6,
+                                double angle_tolerance = CV_PI/45, double line_vote_ratio_tol = 0.65,
                                 int min_line_votes=150, double canny_low_thresh_mul=0.66,
                                 double canny_high_tresh_mul=1.33, int gauss_window_size=5, double gauss_sigma=1,
                                 int morph_close_size=9);
@@ -29,6 +30,8 @@ private:
     double canny_high_thresh_mul_;
     int min_line_votes_;
     int min_visible_lines_;
+    double angle_tolerance_;
+    double line_vote_ratio_tol_;
 
     // intermediate results cache (to prevent always creating/resizing matrices)
     cv::Mat blurred_image_;
