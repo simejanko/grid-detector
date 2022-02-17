@@ -12,7 +12,7 @@ SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar hig
         morph_close_element_(cv::getStructuringElement(cv::MORPH_RECT, cv::Size(morph_close_size, morph_close_size))),
         canny_low_thresh_mul_(canny_low_thresh_mul), canny_high_thresh_mul_(canny_high_thresh_mul),
         min_line_votes_(min_line_votes), min_visible_lines_(min_visible_lines), angle_tolerance_(angle_tolerance),
-        line_vote_ratio_tol_(line_vote_ratio_tol){}
+        line_vote_ratio_tol_(line_vote_ratio_tol) {}
 
 std::vector<cv::Point2f> SquareGridDetector::detect(const cv::Mat& image) {
     if (image.depth() != CV_8U || image.channels() != 3) { //accept RGB images
@@ -54,12 +54,21 @@ void SquareGridDetector::compute_color_mask(const cv::Mat& image) {
     //TODO: could take the largest contour
 }
 
+/**
+ *
+ * A trick to mirror angles larger than 90 degrees for line angle distances to make sense in euclidean space
+ * @param angle angle, between 0 and 180 degrees, in radians
+ */
+inline double angle_dist_convert(double angle) {
+    return angle <= CV_PI ? angle : 2 * CV_PI - angle;
+}
+
 std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>& lines) {
-    // extract angles + a trick to mirror angles larger than 90 degrees for angle distances to make sense in euclidean space
+    // extract angles
     // TODO: this may need to be stored in a (N, 1) cv::Mat for kmeans to work (cv::Mat(line_angles) should just work, without the need to copy)
     std::vector<double> line_angles(lines.size());
     std::transform(lines.begin(), lines.end(), line_angles.begin(),
-                   [](auto& line) { return line[1] <= CV_PI ? line[1] : 2 * CV_PI - line[1]; });
+                   [](auto& line) { return angle_dist_convert(line[1]); });
 
     // cluster into 2 groups based on line angles (assumed to find horizontal and vertical group)
     std::vector<int> clusters(line_angles.size());
@@ -71,12 +80,25 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>&
 
     // TODO: perhaps check that the two groups are separated by at least some angle
 
-    // isolate the first large enough group of lines (based on votes & angle tolerance) in the two groups
+    // group lines based on clusters
+    std::array<std::list<cv::Vec3f>, 2> line_groups;
+    for (int i = 0; i < lines.size(); ++i) {
+        line_groups[clusters[i]].push_back(lines[i]);
+    }
 
-    // TODO: find representatives for each group (max votes)
-    std::pair<std::vector<cv::Vec3f>, std::vector<cv::Vec3f>> line_groups;
-    for (auto group=0; group < 2; ++group){
-        //TODO: min_visible_lines_ + angle_tolerance_ + ratio test
+
+    for (auto& line_group: line_groups) {
+        // line with the most votes assumed to be on the grid
+        const auto& representative_line =
+                *std::max_element(line_group.begin(), line_group.end(),
+                                  [](const auto& line1, const auto& line2) { return line1[2] < line2[2]; });
+
+        // remove lines whose angle is too different or votes ratio is too weak, compared to representative line
+        line_group.remove_if(
+                [representative_line, rep_angle = angle_dist_convert(representative_line[1]), this](const auto& line) {
+                    return std::abs(angle_dist_convert(line[1]) - rep_angle) > this->angle_tolerance_ ||
+                           line[2] / representative_line[2] < this->line_vote_ratio_tol_;
+                });
     }
 
     // compute intersections
