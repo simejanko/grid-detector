@@ -99,6 +99,11 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>&
                     return std::abs(angle_dist_convert(line[1]) - rep_angle) > this->angle_tolerance_ ||
                            line[2] / representative_line[2] < this->line_vote_ratio_tol_;
                 });
+
+        // not enough lines detected, return empty result
+        if (line_group.size() < min_visible_lines_){
+            return {};
+        }
     }
 
     // compute intersections
