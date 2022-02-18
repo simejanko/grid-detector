@@ -2,6 +2,7 @@
 
 #include <opencv2/imgproc.hpp>
 #include <opencv2/core.hpp>
+#include <cmath>
 
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines,
                                        double angle_tolerance, double line_vote_ratio_tol, int min_line_votes,
@@ -63,7 +64,8 @@ inline double angle_dist_convert(double angle) {
     return angle <= CV_PI ? angle : 2 * CV_PI - angle;
 }
 
-std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>& lines) {
+/**  Clusters line detections from Hough transform into 2 groups (presumably horizontal & vertical) based on angles */
+std::array<std::list<cv::Vec3f>, 2> cluster_lines(std::vector<cv::Vec3f>& lines) {
     // extract angles
     // TODO: this may need to be stored in a (N, 1) cv::Mat for kmeans to work (cv::Mat(line_angles) should just work, without the need to copy)
     std::vector<double> line_angles(lines.size());
@@ -79,14 +81,30 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>&
                cv::KmeansFlags::KMEANS_RANDOM_CENTERS);
 
     // TODO: perhaps check that the two groups are separated by at least some angle
+    //  (at least we want to avoid degenerate cases where all angles are equal)
 
-    // group lines based on clusters
     std::array<std::list<cv::Vec3f>, 2> line_groups;
     for (int i = 0; i < lines.size(); ++i) {
         line_groups[clusters[i]].push_back(lines[i]);
     }
+    return line_groups;
+}
 
+/** Computes intersection of two lines from Hough transform by solving liner system (not the most efficient way) */
+cv::Point2f line_intersection(cv::Vec3f line1, cv::Vec3f line2) {
+    auto rho1 = line1[0], theta1 = line1[1];
+    auto rho2 = line2[0], theta2 = line2[1];
+    cv::Mat m({2, 2}, {std::cos(theta1), std::sin(theta1), std::cos(theta2), std::sin(theta2)});
+    cv::Mat b({2, 1}, {rho1, rho2});
+    cv::Mat_<float> intersection;
+    cv::solve(m, b, intersection);
+    return {intersection(0, 0), intersection(1, 0)};
+}
 
+std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>& lines) {
+    auto line_groups = cluster_lines(lines);
+
+    // filter lines
     for (auto& line_group: line_groups) {
         // line with the most votes assumed to be on the grid
         const auto& representative_line =
@@ -101,12 +119,18 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>&
                 });
 
         // not enough lines detected, return empty result
-        if (line_group.size() < min_visible_lines_){
+        if (line_group.size() < min_visible_lines_) {
             return {};
         }
     }
 
     // compute intersections
+    std::vector<cv::Point2f> intersections(line_groups[0].size() * line_groups[1].size());
+    for (const auto& line1: line_groups[0]) {
+        for (const auto& line2: line_groups[1]) {
+            intersections.push_back(line_intersection(line1, line2));
+        }
+    }
 
-    return {};
+    return intersections;
 }
