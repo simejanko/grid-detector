@@ -6,16 +6,35 @@
 #include <cmath>
 #include <list>
 
+const int DEBUG_LINE_THICKNESS = 3;
+
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines,
                                        double angle_tolerance, double line_vote_ratio_tol, int min_line_votes,
                                        double canny_low_thresh_mul, double canny_high_thresh_mul, int gauss_window_size,
-                                       double gauss_sigma, int morph_close_size) :
+                                       double gauss_sigma, int morph_close_size, bool draw_debug, float debug_scale) :
         low_HSV_thresh_(std::move(low_HSV_thresh)), high_HSV_thresh_(std::move(high_HSV_thresh)),
         gauss_window_size_(gauss_window_size, gauss_window_size), gauss_sigma_(gauss_sigma),
         morph_close_element_(cv::getStructuringElement(cv::MORPH_RECT, cv::Size(morph_close_size, morph_close_size))),
         canny_low_thresh_mul_(canny_low_thresh_mul), canny_high_thresh_mul_(canny_high_thresh_mul),
         min_line_votes_(min_line_votes), min_visible_lines_(min_visible_lines), angle_tolerance_(angle_tolerance),
-        line_vote_ratio_tol_(line_vote_ratio_tol) {}
+        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale) {}
+
+/** Draws hough lines on the image. Code mostly copied from OpenCV documentation */
+template<class ForwardIter>
+void draw_hough_lines(ForwardIter begin, ForwardIter end, cv::Mat& image, int thickness = DEBUG_LINE_THICKNESS,
+                      const cv::Scalar& color = cv::Scalar(0, 255, 0)) {
+    for (auto it = begin; it != end; ++it) {
+        float rho = (*it)[0], theta = (*it)[1];
+        cv::Point pt1, pt2;
+        double a = std::cos(theta), b = std::sin(theta);
+        double x0 = a * rho, y0 = b * rho;
+        pt1.x = cvRound(x0 + 1000 * (-b));
+        pt1.y = cvRound(y0 + 1000 * (a));
+        pt2.x = cvRound(x0 - 1000 * (-b));
+        pt2.y = cvRound(y0 - 1000 * (a));
+        cv::line(image, pt1, pt2, color, thickness, cv::LINE_AA);
+    }
+}
 
 std::vector<cv::Point2f> SquareGridDetector::detect(const cv::Mat& image) {
     if (image.depth() != CV_8U || image.channels() != 3) { //accept RGB images
@@ -40,6 +59,16 @@ std::vector<cv::Point2f> SquareGridDetector::detect(const cv::Mat& image) {
     constexpr auto one_degree_rad = CV_PI / 180;
     cv::HoughLines(edge_mask_, lines, 1, one_degree_rad, min_line_votes_);
 
+    if (draw_debug_) {
+        debug_imgs_[0] = blurred_image_;
+        debug_imgs_[1] = mask_;
+        debug_imgs_[2] = edge_mask_;
+        for (auto i = 3; i < debug_imgs_.size(); ++i) {
+            image.copyTo(debug_imgs_[i]);
+        }
+        draw_hough_lines(lines.cbegin(), lines.cend(), debug_imgs_[3], DEBUG_LINE_THICKNESS / debug_scale_);
+    }
+
     // filter lines & find intersections
     return grid_points(lines);
 }
@@ -61,7 +90,7 @@ void SquareGridDetector::compute_color_mask() {
  * A trick to mirror angles larger than 90 degrees for line angle distances to make sense in euclidean space
  * @param angle angle, between 0 and 180 degrees, in radians
  */
-inline double angle_dist_convert(double angle) {
+inline float angle_dist_convert(double angle) {
     return angle <= CV_PI ? angle : 2 * CV_PI - angle;
 }
 
@@ -92,7 +121,7 @@ std::array<std::list<cv::Vec3f>, 2> cluster_lines(const std::vector<cv::Vec3f>& 
 }
 
 /** Computes intersection of two lines from Hough transform by solving liner system (not the most efficient way) */
-cv::Point2f line_intersection(cv::Vec3f line1, cv::Vec3f line2) {
+cv::Point2f line_intersection(const cv::Vec3f& line1, const cv::Vec3f& line2) {
     auto rho1 = line1[0], theta1 = line1[1];
     auto rho2 = line2[0], theta2 = line2[1];
     cv::Mat m({2, 2}, {std::cos(theta1), std::sin(theta1), std::cos(theta2), std::sin(theta2)});
@@ -103,7 +132,7 @@ cv::Point2f line_intersection(cv::Vec3f line1, cv::Vec3f line2) {
 }
 
 std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::Vec3f>& lines) {
-    if (lines.size() < 2*min_visible_lines_) { // too few visible lines
+    if (lines.size() < 2 * min_visible_lines_) { // too few visible lines
         return {};
     }
 
@@ -137,5 +166,28 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
         }
     }
 
+    if (draw_debug_) {
+        draw_hough_lines(line_groups[0].cbegin(), line_groups[0].cend(), debug_imgs_[4],
+                         DEBUG_LINE_THICKNESS / debug_scale_, cv::Scalar(255, 0, 0));
+        draw_hough_lines(line_groups[1].cbegin(), line_groups[1].cend(), debug_imgs_[4],
+                         DEBUG_LINE_THICKNESS / debug_scale_, cv::Scalar(0, 255, 0));
+        for (const auto& point: intersections) {
+            cv::drawMarker(debug_imgs_[5], point, cv::Scalar(0, 255, 0));
+        }
+    }
+
     return intersections;
+}
+
+/**
+ * Concatenates all debug images (blurred image, mask, edges, lines, filtered/grouped lines, intersections)
+ * in a grid/subplot and returns resulting debug image.
+ */
+cv::Mat SquareGridDetector::debug_image() {
+    cv::Mat first_row, second_row, result, result_scaled;
+    cv::hconcat(debug_imgs_, 3, first_row);
+    cv::hconcat(&debug_imgs_[3], 3, second_row);
+    cv::vconcat(first_row, second_row, result);
+    cv::resize(result, result_scaled, cv::Size(), debug_scale_, debug_scale_);
+    return result_scaled;
 }
