@@ -9,16 +9,16 @@ class SquareGridDetector {
 public:
     explicit SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines=6,
                                 double angle_tolerance = CV_PI/45, double line_vote_ratio_tol = 0.65,
-                                int min_line_votes=150, double canny_low_thresh_mul=0.66,
-                                double canny_high_tresh_mul=1.33, int gauss_window_size=5, double gauss_sigma=1,
+                                int min_line_votes=150, double canny_low_thresh_mul=0.2,
+                                double canny_high_tresh_mul=0.3, int gauss_window_size=5, double gauss_sigma=1,
                                 int morph_close_size=9);
 
-    std::vector<cv::Point2f> detect(const cv::Mat& image);
+    [[nodiscard]] std::vector<cv::Point2f> detect(const cv::Mat& image);
 
 private:
-    void compute_color_mask(const cv::Mat& image);
+    void compute_color_mask();
 
-    std::vector<cv::Point2f> grid_points(std::vector<cv::Vec3f>& lines);
+    std::vector<cv::Point2f> grid_points(const std::vector<cv::Vec3f>& lines);
 
     // parameters
     cv::Scalar low_HSV_thresh_;

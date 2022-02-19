@@ -2,7 +2,9 @@
 
 #include <opencv2/imgproc.hpp>
 #include <opencv2/core.hpp>
+
 #include <cmath>
+#include <list>
 
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines,
                                        double angle_tolerance, double line_vote_ratio_tol, int min_line_votes,
@@ -22,8 +24,7 @@ std::vector<cv::Point2f> SquareGridDetector::detect(const cv::Mat& image) {
 
     // gauss filter
     cv::GaussianBlur(image, blurred_image_, gauss_window_size_, gauss_sigma_);
-
-    compute_color_mask(image);
+    compute_color_mask();
 
     // canny edges within a mask
     cv::cvtColor(blurred_image_, grayscale_image_, cv::COLOR_BGR2GRAY);
@@ -43,7 +44,7 @@ std::vector<cv::Point2f> SquareGridDetector::detect(const cv::Mat& image) {
     return grid_points(lines);
 }
 
-void SquareGridDetector::compute_color_mask(const cv::Mat& image) {
+void SquareGridDetector::compute_color_mask() {
     // to HSV
     cv::cvtColor(blurred_image_, hsv_image_, cv::COLOR_BGR2HSV);
     // check HSV range -> binary mask
@@ -65,19 +66,19 @@ inline double angle_dist_convert(double angle) {
 }
 
 /**  Clusters line detections from Hough transform into 2 groups (presumably horizontal & vertical) based on angles */
-std::array<std::list<cv::Vec3f>, 2> cluster_lines(std::vector<cv::Vec3f>& lines) {
+std::array<std::list<cv::Vec3f>, 2> cluster_lines(const std::vector<cv::Vec3f>& lines) {
     // extract angles
-    // TODO: this may need to be stored in a (N, 1) cv::Mat for kmeans to work (cv::Mat(line_angles) should just work, without the need to copy)
-    std::vector<double> line_angles(lines.size());
+    std::vector<float> line_angles(lines.size());
     std::transform(lines.begin(), lines.end(), line_angles.begin(),
                    [](auto& line) { return angle_dist_convert(line[1]); });
+    cv::Mat line_angles_mat(line_angles);
 
     // cluster into 2 groups based on line angles (assumed to find horizontal and vertical group)
     std::vector<int> clusters(line_angles.size());
     auto kmeans_criteria = cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS,
                                             15, CV_PI / 360); // 0.5 degree criteria with max. 15 iterations
     // 5 attempts with different cluster initializations
-    cv::kmeans(line_angles, 2, clusters, kmeans_criteria, 5,
+    cv::kmeans(line_angles_mat, 2, clusters, kmeans_criteria, 5,
                cv::KmeansFlags::KMEANS_RANDOM_CENTERS);
 
     // TODO: perhaps check that the two groups are separated by at least some angle
@@ -101,7 +102,11 @@ cv::Point2f line_intersection(cv::Vec3f line1, cv::Vec3f line2) {
     return {intersection(0, 0), intersection(1, 0)};
 }
 
-std::vector<cv::Point2f> SquareGridDetector::grid_points(std::vector<cv::Vec3f>& lines) {
+std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::Vec3f>& lines) {
+    if (lines.size() < 2*min_visible_lines_) { // too few visible lines
+        return {};
+    }
+
     auto line_groups = cluster_lines(lines);
 
     // filter lines
