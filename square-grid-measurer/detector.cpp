@@ -5,19 +5,22 @@
 
 #include <cmath>
 #include <list>
+#include <algorithm>
 
 const int DEBUG_LINE_THICKNESS = 3;
 
-SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines,
-                                       double angle_tolerance, double line_vote_ratio_tol, int min_line_votes,
-                                       double canny_low_thresh_mul, double canny_high_thresh_mul, int gauss_window_size,
-                                       double gauss_sigma, int morph_close_size, bool draw_debug, float debug_scale) :
+SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh,
+                                       int min_visible_lines, double angle_tolerance, double line_vote_ratio_tol,
+                                       int nms_pixels, int min_line_votes, double canny_low_thresh_mul,
+                                       double canny_high_thresh_mul, int gauss_window_size, double gauss_sigma,
+                                       int morph_close_size, bool draw_debug, float debug_scale) :
         low_HSV_thresh_(std::move(low_HSV_thresh)), high_HSV_thresh_(std::move(high_HSV_thresh)),
         gauss_window_size_(gauss_window_size, gauss_window_size), gauss_sigma_(gauss_sigma),
         morph_close_element_(cv::getStructuringElement(cv::MORPH_RECT, cv::Size(morph_close_size, morph_close_size))),
         canny_low_thresh_mul_(canny_low_thresh_mul), canny_high_thresh_mul_(canny_high_thresh_mul),
         min_line_votes_(min_line_votes), min_visible_lines_(min_visible_lines), angle_tolerance_(angle_tolerance),
-        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale) {}
+        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale),
+        nms_pixels_(nms_pixels) {}
 
 /** Draws hough lines on the image. Code mostly copied from OpenCV documentation */
 template<class ForwardIter>
@@ -28,10 +31,10 @@ void draw_hough_lines(ForwardIter begin, ForwardIter end, cv::Mat& image, int th
         cv::Point pt1, pt2;
         double a = std::cos(theta), b = std::sin(theta);
         double x0 = a * rho, y0 = b * rho;
-        pt1.x = cvRound(x0 + 1000 * (-b));
-        pt1.y = cvRound(y0 + 1000 * (a));
-        pt2.x = cvRound(x0 - 1000 * (-b));
-        pt2.y = cvRound(y0 - 1000 * (a));
+        pt1.x = cvRound(x0 + 1e5 * (-b));
+        pt1.y = cvRound(y0 + 1e5 * (a));
+        pt2.x = cvRound(x0 - 1e5 * (-b));
+        pt2.y = cvRound(y0 - 1e5 * (a));
         cv::line(image, pt1, pt2, color, thickness, cv::LINE_AA);
     }
 }
@@ -61,8 +64,9 @@ std::vector<cv::Point2f> SquareGridDetector::detect(const cv::Mat& image) {
 
     if (draw_debug_) {
         debug_imgs_[0] = blurred_image_;
-        debug_imgs_[1] = mask_;
-        debug_imgs_[2] = edge_mask_;
+        // grayscale images are converted to BGR to match other images
+        cv::cvtColor(mask_, debug_imgs_[1], cv::COLOR_GRAY2BGR);
+        cv::cvtColor(edge_mask_, debug_imgs_[2], cv::COLOR_GRAY2BGR);
         for (auto i = 3; i < debug_imgs_.size(); ++i) {
             image.copyTo(debug_imgs_[i]);
         }
@@ -91,7 +95,7 @@ void SquareGridDetector::compute_color_mask() {
  * @param angle angle, between 0 and 180 degrees, in radians
  */
 inline float angle_dist_convert(double angle) {
-    return angle <= CV_PI ? angle : 2 * CV_PI - angle;
+    return angle <= CV_PI / 2 ? angle : CV_PI - angle;
 }
 
 /**  Clusters line detections from Hough transform into 2 groups (presumably horizontal & vertical) based on angles */
@@ -147,10 +151,24 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
 
         // remove lines whose angle is too different or votes ratio is too weak, compared to representative line
         line_group.remove_if(
-                [representative_line, rep_angle = angle_dist_convert(representative_line[1]), this](const auto& line) {
+                [&representative_line, rep_angle = angle_dist_convert(representative_line[1]), this](const auto& line) {
                     return std::abs(angle_dist_convert(line[1]) - rep_angle) > this->angle_tolerance_ ||
                            line[2] / representative_line[2] < this->line_vote_ratio_tol_;
                 });
+
+        // simple vote-based non-maxima suppression on remaining lines
+        for (auto it = line_group.begin(); it != line_group.end();) {
+            auto any_better_lines = std::any_of(line_group.cbegin(), line_group.cend(),
+                                                [this, l1 = *it](const auto& l2) {
+                                                    return std::abs(l1[0] - l2[0]) < this->nms_pixels_ && l2[2] > l1[2];
+                                                });
+            if (any_better_lines) {
+                it = line_group.erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
 
         // not enough lines detected, return empty result
         if (line_group.size() < min_visible_lines_) {
@@ -172,7 +190,8 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
         draw_hough_lines(line_groups[1].cbegin(), line_groups[1].cend(), debug_imgs_[4],
                          DEBUG_LINE_THICKNESS / debug_scale_, cv::Scalar(0, 255, 0));
         for (const auto& point: intersections) {
-            cv::drawMarker(debug_imgs_[5], point, cv::Scalar(0, 255, 0));
+            cv::drawMarker(debug_imgs_[5], point, cv::Scalar(0, 255, 0), cv::MARKER_CROSS,
+                           3*DEBUG_LINE_THICKNESS / debug_scale_, DEBUG_LINE_THICKNESS / debug_scale_);
         }
     }
 
@@ -185,8 +204,8 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
  */
 cv::Mat SquareGridDetector::debug_image() {
     cv::Mat first_row, second_row, result, result_scaled;
-    cv::hconcat(debug_imgs_, 3, first_row);
-    cv::hconcat(&debug_imgs_[3], 3, second_row);
+    cv::hconcat(debug_imgs_.data(), 3, first_row);
+    cv::hconcat(debug_imgs_.data() + 3, 3, second_row);
     cv::vconcat(first_row, second_row, result);
     cv::resize(result, result_scaled, cv::Size(), debug_scale_, debug_scale_);
     return result_scaled;
