@@ -10,7 +10,7 @@ class SquareGridDetector {
 public:
     explicit SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh, int min_visible_lines = 3,
                                 double angle_tolerance = CV_PI / 45, double line_vote_ratio_tol = 0.33,
-                                int nms_pixels = 20, int min_line_votes = 200, double canny_low_thresh_mul = 0.3,
+                                int min_line_votes = 200, double canny_low_thresh_mul = 0.3,
                                 double canny_high_tresh_mul = 0.6, int gauss_window_size = 5, double gauss_sigma = 1,
                                 int morph_close_size = 9, bool draw_debug = false, float debug_scale = 0.5);
 
@@ -35,7 +35,6 @@ private:
     int min_visible_lines_;
     double angle_tolerance_;
     double line_vote_ratio_tol_;
-    int nms_pixels_;
 
     bool draw_debug_;
     float debug_scale_;

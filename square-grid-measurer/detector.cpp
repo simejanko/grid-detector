@@ -6,21 +6,21 @@
 #include <cmath>
 #include <list>
 #include <algorithm>
+#include <optional>
 
 const int DEBUG_LINE_THICKNESS = 3;
 
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh,
                                        int min_visible_lines, double angle_tolerance, double line_vote_ratio_tol,
-                                       int nms_pixels, int min_line_votes, double canny_low_thresh_mul,
-                                       double canny_high_thresh_mul, int gauss_window_size, double gauss_sigma,
-                                       int morph_close_size, bool draw_debug, float debug_scale) :
+                                       int min_line_votes, double canny_low_thresh_mul, double canny_high_thresh_mul,
+                                       int gauss_window_size, double gauss_sigma, int morph_close_size, bool draw_debug,
+                                       float debug_scale) :
         low_HSV_thresh_(std::move(low_HSV_thresh)), high_HSV_thresh_(std::move(high_HSV_thresh)),
         gauss_window_size_(gauss_window_size, gauss_window_size), gauss_sigma_(gauss_sigma),
         morph_close_element_(cv::getStructuringElement(cv::MORPH_RECT, cv::Size(morph_close_size, morph_close_size))),
         canny_low_thresh_mul_(canny_low_thresh_mul), canny_high_thresh_mul_(canny_high_thresh_mul),
         min_line_votes_(min_line_votes), min_visible_lines_(min_visible_lines), angle_tolerance_(angle_tolerance),
-        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale),
-        nms_pixels_(nms_pixels) {}
+        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale) {}
 
 /** Draws hough lines on the image. Code mostly copied from OpenCV documentation */
 template<class ForwardIter>
@@ -124,15 +124,22 @@ std::array<std::list<cv::Vec3f>, 2> cluster_lines(const std::vector<cv::Vec3f>& 
     return line_groups;
 }
 
-/** Computes intersection of two lines from Hough transform by solving liner system (not the most efficient way) */
-cv::Point2f line_intersection(const cv::Vec3f& line1, const cv::Vec3f& line2) {
+/**
+ * Computes intersection of two lines from Hough transform by solving liner system (not the most efficient way).
+ * Returns empty optional if no intersection could be computed (e.g. parallel lines).
+ */
+std::optional<cv::Point2f> line_intersection(const cv::Vec3f& line1, const cv::Vec3f& line2) {
     auto rho1 = line1[0], theta1 = line1[1];
     auto rho2 = line2[0], theta2 = line2[1];
     cv::Mat m({2, 2}, {std::cos(theta1), std::sin(theta1), std::cos(theta2), std::sin(theta2)});
     cv::Mat b({2, 1}, {rho1, rho2});
     cv::Mat_<float> intersection;
-    cv::solve(m, b, intersection);
-    return {intersection(0, 0), intersection(1, 0)};
+    auto is_valid = cv::solve(m, b, intersection);
+    if (!is_valid){
+        return {};
+    }
+
+    return {cv::Point2f(intersection(0, 0), intersection(1, 0))};
 }
 
 std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::Vec3f>& lines) {
@@ -152,16 +159,27 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
         // remove lines whose angle is too different or votes ratio is too weak, compared to representative line
         line_group.remove_if(
                 [&representative_line, rep_angle = angle_dist_convert(representative_line[1]), this](const auto& line) {
-                    return std::abs(angle_dist_convert(line[1]) - rep_angle) > this->angle_tolerance_ ||
-                           line[2] / representative_line[2] < this->line_vote_ratio_tol_;
+                    return std::abs(angle_dist_convert(line[1]) - rep_angle) > angle_tolerance_ ||
+                           line[2] / representative_line[2] < line_vote_ratio_tol_;
                 });
 
-        // simple vote-based non-maxima suppression on remaining lines
+        // vote-based non-maxima suppression on remaining lines,
+        // where 2 lines from the same group are close enough when their intersection is within an image
         for (auto it = line_group.begin(); it != line_group.end();) {
-            auto any_better_lines = std::any_of(line_group.cbegin(), line_group.cend(),
-                                                [this, l1 = *it](const auto& l2) {
-                                                    return std::abs(l1[0] - l2[0]) < this->nms_pixels_ && l2[2] > l1[2];
-                                                });
+            auto any_better_lines =
+                    std::any_of(line_group.cbegin(), line_group.cend(),
+                    [this, l1 = *it](const auto& l2) {
+                            // two lines from same group considered close enough for NMS
+                            // if they intersect within the image bounds
+                            auto inters = line_intersection(l1, l2);
+                            if (!inters) {
+                                return false;
+                            }
+                            auto pt = inters.value();
+                            auto within_bounds = pt.x>=0 && pt.x< blurred_image_.cols &&
+                                                 pt.y>=0 && pt.y< blurred_image_.rows;
+                            return within_bounds && l2[2] > l1[2];
+                         });
             if (any_better_lines) {
                 it = line_group.erase(it);
             }
@@ -180,7 +198,10 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
     std::vector<cv::Point2f> intersections(line_groups[0].size() * line_groups[1].size());
     for (const auto& line1: line_groups[0]) {
         for (const auto& line2: line_groups[1]) {
-            intersections.push_back(line_intersection(line1, line2));
+            auto intersection = line_intersection(line1, line2);
+            if (intersection){
+                intersections.push_back(intersection.value());
+            }
         }
     }
 
