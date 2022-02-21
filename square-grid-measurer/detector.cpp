@@ -168,18 +168,21 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
         for (auto it = line_group.begin(); it != line_group.end();) {
             auto any_better_lines =
                     std::any_of(line_group.cbegin(), line_group.cend(),
-                    [this, l1 = *it](const auto& l2) {
-                            // two lines from same group considered close enough for NMS
-                            // if they intersect within the image bounds
-                            auto inters = line_intersection(l1, l2);
-                            if (!inters) {
-                                return false;
-                            }
-                            auto pt = inters.value();
-                            auto within_bounds = pt.x>=0 && pt.x< blurred_image_.cols &&
-                                                 pt.y>=0 && pt.y< blurred_image_.rows;
-                            return within_bounds && l2[2] > l1[2];
-                         });
+                                [this, l1 = *it](const auto& l2) {
+                                    if (l1[2] > l2[2]) { // l1 has more votes
+                                        return false;
+                                    }
+
+                                    // now check if lines are "close enough"
+                                    auto inters = line_intersection(l1, l2);
+                                    if (!inters) {
+                                        return false;
+                                    }
+                                    auto pt = inters.value();
+                                    auto within_bounds = pt.x >= 0 && pt.x < blurred_image_.cols &&
+                                                         pt.y >= 0 && pt.y < blurred_image_.rows;
+                                    return within_bounds;
+                                });
             if (any_better_lines) {
                 it = line_group.erase(it);
             }
