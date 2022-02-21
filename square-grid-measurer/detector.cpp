@@ -176,7 +176,9 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
                                     // now check if lines are "close enough"
                                     auto inters = line_intersection(l1, l2);
                                     if (!inters) {
-                                        return false;
+                                        // assumed parallel lines, compare based on rho &
+                                        // very rough image-scaling heuristic threshold
+                                        return std::abs(l1[0] - l2[0]) < blurred_image_.cols/100.;
                                     }
                                     auto pt = inters.value();
                                     auto within_bounds = pt.x >= 0 && pt.x < blurred_image_.cols &&
