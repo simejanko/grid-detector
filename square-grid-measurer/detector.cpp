@@ -13,14 +13,15 @@ const int DEBUG_LINE_THICKNESS = 3;
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh,
                                        int min_visible_lines, double angle_tolerance, double line_vote_ratio_tol,
                                        int min_line_votes, double canny_low_thresh_mul, double canny_high_thresh_mul,
-                                       int gauss_window_size, double gauss_sigma, int morph_close_size, bool draw_debug,
-                                       float debug_scale) :
+                                       int nms_strength,  int gauss_window_size, double gauss_sigma,
+                                       int morph_close_size, bool draw_debug, float debug_scale) :
         low_HSV_thresh_(std::move(low_HSV_thresh)), high_HSV_thresh_(std::move(high_HSV_thresh)),
         gauss_window_size_(gauss_window_size, gauss_window_size), gauss_sigma_(gauss_sigma),
         morph_close_element_(cv::getStructuringElement(cv::MORPH_RECT, cv::Size(morph_close_size, morph_close_size))),
         canny_low_thresh_mul_(canny_low_thresh_mul), canny_high_thresh_mul_(canny_high_thresh_mul),
         min_line_votes_(min_line_votes), min_visible_lines_(min_visible_lines), angle_tolerance_(angle_tolerance),
-        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale) {}
+        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale),
+        nms_strength_(nms_strength) {}
 
 /** Draws hough lines on the image. Code mostly copied from OpenCV documentation */
 template<class ForwardIter>
@@ -149,6 +150,10 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
 
     auto line_groups = cluster_lines(lines);
 
+    // bounds for performing non-maxima suppression on lines
+    auto nms_intersection_bounds = cv::Rect(cv::Point2i(-(nms_strength_-1) * blurred_image_.cols, -(nms_strength_-1) * blurred_image_.rows),
+                                            cv::Point2i(nms_strength_ * blurred_image_.cols, nms_strength_ * blurred_image_.rows));
+
     // filter lines
     for (auto& line_group: line_groups) {
         // line with the most votes assumed to be on the grid
@@ -164,26 +169,26 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
                 });
 
         // vote-based non-maxima suppression on remaining lines,
-        // where 2 lines from the same group are close enough when their intersection is within an image
+        // where 2 lines from the same group are close enough when their intersection is
+        // within a multiplier of image bounds (based on nms_strength parameter)
         for (auto it = line_group.begin(); it != line_group.end();) {
             auto any_better_lines =
                     std::any_of(line_group.cbegin(), line_group.cend(),
-                                [this, l1 = *it](const auto& l2) {
-                                    if (l1[2] > l2[2]) { // l1 has more votes
+                                [this, l1 = *it, &nms_intersection_bounds](const auto& l2) {
+                                    // if l1 has more votes or same lines l2 is definitely not better
+                                    if (l1[2] > l2[2] || l1 == l2) {
                                         return false;
                                     }
 
-                                    // now check if lines are "close enough"
+                                    // now check if lines are "close enough" to eliminate one
                                     auto inters = line_intersection(l1, l2);
                                     if (!inters) {
-                                        // assumed parallel lines, compare based on rho &
-                                        // very rough image-scaling heuristic threshold
+                                        // assume parallel lines, compare based on rho &
+                                        // very rough size-scaling heuristic threshold
                                         return std::abs(l1[0] - l2[0]) < blurred_image_.cols/100.;
                                     }
-                                    auto pt = inters.value();
-                                    auto within_bounds = pt.x >= 0 && pt.x < blurred_image_.cols &&
-                                                         pt.y >= 0 && pt.y < blurred_image_.rows;
-                                    return within_bounds;
+                                    auto intersection_point = inters.value();
+                                    return nms_intersection_bounds.contains(intersection_point);
                                 });
             if (any_better_lines) {
                 it = line_group.erase(it);
