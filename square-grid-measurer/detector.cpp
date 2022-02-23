@@ -11,7 +11,7 @@
 const int DEBUG_LINE_THICKNESS = 3;
 
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh,
-                                       int min_visible_lines, double angle_tolerance, double line_vote_ratio_tol,
+                                       int min_visible_lines, double angle_tolerance,
                                        int min_line_votes, double canny_low_thresh_mul, double canny_high_thresh_mul,
                                        int nms_strength,  int gauss_window_size, double gauss_sigma,
                                        int morph_close_size, bool draw_debug, float debug_scale) :
@@ -20,8 +20,7 @@ SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar hig
         morph_close_element_(cv::getStructuringElement(cv::MORPH_RECT, cv::Size(morph_close_size, morph_close_size))),
         canny_low_thresh_mul_(canny_low_thresh_mul), canny_high_thresh_mul_(canny_high_thresh_mul),
         min_line_votes_(min_line_votes), min_visible_lines_(min_visible_lines), angle_tolerance_(angle_tolerance),
-        line_vote_ratio_tol_(line_vote_ratio_tol), draw_debug_(draw_debug), debug_scale_(debug_scale),
-        nms_strength_(nms_strength) {}
+        draw_debug_(draw_debug), debug_scale_(debug_scale), nms_strength_(nms_strength) {}
 
 /** Draws hough lines on the image. Code mostly copied from OpenCV documentation */
 template<class ForwardIter>
