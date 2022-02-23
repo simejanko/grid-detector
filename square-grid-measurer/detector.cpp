@@ -160,7 +160,7 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
         std::nth_element(line_group.begin(), line_group.begin() + median_offset, line_group.end(),
                          [](const auto& line1, const auto& line2) { return angle_dist_convert(line1[1]) <
                                                                                 angle_dist_convert(line2[1]); });
-        auto median_angle = angle_dist_convert(line_group[median_offset][2]);
+        auto median_angle = angle_dist_convert(line_group[median_offset][1]);
 
         // remove lines whose angle is too different from median
         line_group.erase(
