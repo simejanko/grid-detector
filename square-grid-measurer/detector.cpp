@@ -100,7 +100,7 @@ inline float angle_dist_convert(double angle) {
 }
 
 /**  Clusters line detections from Hough transform into 2 groups (presumably horizontal & vertical) based on angles */
-std::array<std::list<cv::Vec3f>, 2> cluster_lines(const std::vector<cv::Vec3f>& lines) {
+std::array<std::vector<cv::Vec3f>, 2> cluster_lines(const std::vector<cv::Vec3f>& lines) {
     // extract angles
     std::vector<float> line_angles(lines.size());
     std::transform(lines.begin(), lines.end(), line_angles.begin(),
@@ -118,7 +118,7 @@ std::array<std::list<cv::Vec3f>, 2> cluster_lines(const std::vector<cv::Vec3f>& 
     // TODO: perhaps check that the two groups are separated by at least some angle
     //  (at least we want to avoid degenerate cases where all angles are equal)
 
-    std::array<std::list<cv::Vec3f>, 2> line_groups;
+    std::array<std::vector<cv::Vec3f>, 2> line_groups;
     for (int i = 0; i < lines.size(); ++i) {
         line_groups[clusters[i]].push_back(lines[i]);
     }
@@ -147,7 +147,6 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
     if (lines.size() < 2 * min_visible_lines_) { // too few visible lines
         return {};
     }
-
     auto line_groups = cluster_lines(lines);
 
     // bounds for performing non-maxima suppression on lines
@@ -156,19 +155,22 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
 
     // filter lines
     for (auto& line_group: line_groups) {
-        // line with the most votes assumed to be on the grid
-        const auto& representative_line =
-                *std::max_element(line_group.begin(), line_group.end(),
-                                  [](const auto& line1, const auto& line2) { return line1[2] < line2[2]; });
+        // median angle in the group (approximate for even-sized groups)
+        auto median_offset = line_group.size()/2;
+        std::nth_element(line_group.begin(), line_group.begin() + median_offset, line_group.end(),
+                         [](const auto& line1, const auto& line2) { return angle_dist_convert(line1[1]) <
+                                                                                angle_dist_convert(line2[1]); });
+        auto median_angle = angle_dist_convert(line_group[median_offset][2]);
 
-        // remove lines whose angle is too different or votes ratio is too weak, compared to representative line
-        line_group.remove_if(
-                [&representative_line, rep_angle = angle_dist_convert(representative_line[1]), this](const auto& line) {
-                    return std::abs(angle_dist_convert(line[1]) - rep_angle) > angle_tolerance_ ||
-                           line[2] / representative_line[2] < line_vote_ratio_tol_;
-                });
+        // remove lines whose angle is too different from median
+        line_group.erase(
+                std::remove_if(line_group.begin(), line_group.end(),
+                               [median_angle, this](const auto& line) {
+                                   return std::abs(angle_dist_convert(line[1]) - median_angle) > angle_tolerance_;
+                               }),
+                line_group.end());
 
-        // vote-based non-maxima suppression on remaining lines,
+        // vote-based non-maxima suppression on remaining lines (not efficient),
         // where 2 lines from the same group are close enough when their intersection is
         // within a multiplier of image bounds (based on nms_strength parameter)
         for (auto it = line_group.begin(); it != line_group.end();) {
