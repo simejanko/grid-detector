@@ -223,9 +223,15 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
     }
 
     if (draw_debug_) {
-        draw_hough_lines(line_groups[0].cbegin(), line_groups[0].cend(), debug_imgs_[4],
+        // sort line groups according to angle of first line (to make debug colors flicker less)
+        auto& line_group0 = line_groups.front(), line_group1 = line_groups.back();
+        if (angle_dist_convert(line_group0.front()[1]) > angle_dist_convert(line_group1.front()[1])){
+            std::swap(line_group0, line_group1);
+        }
+
+        draw_hough_lines(line_group0.cbegin(), line_group0.cend(), debug_imgs_[4],
                          DEBUG_LINE_THICKNESS / debug_scale_, cv::Scalar(255, 0, 0));
-        draw_hough_lines(line_groups[1].cbegin(), line_groups[1].cend(), debug_imgs_[4],
+        draw_hough_lines(line_group1.cbegin(), line_group1.cend(), debug_imgs_[4],
                          DEBUG_LINE_THICKNESS / debug_scale_, cv::Scalar(0, 255, 0));
         for (const auto& point: intersections) {
             cv::drawMarker(debug_imgs_[5], point, cv::Scalar(0, 255, 0), cv::MARKER_CROSS,
