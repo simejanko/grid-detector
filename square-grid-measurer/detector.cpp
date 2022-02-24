@@ -13,7 +13,7 @@ const int DEBUG_LINE_THICKNESS = 3;
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh,
                                        int min_visible_lines, double angle_tolerance,
                                        int min_line_votes, double canny_low_thresh_mul, double canny_high_thresh_mul,
-                                       int nms_strength,  int gauss_window_size, double gauss_sigma,
+                                       int nms_strength, int gauss_window_size, double gauss_sigma,
                                        int morph_close_size, bool draw_debug, float debug_scale) :
         low_HSV_thresh_(std::move(low_HSV_thresh)), high_HSV_thresh_(std::move(high_HSV_thresh)),
         gauss_window_size_(gauss_window_size, gauss_window_size), gauss_sigma_(gauss_sigma),
@@ -48,8 +48,11 @@ std::vector<cv::Point2f> SquareGridDetector::detect(const cv::Mat& image) {
     cv::GaussianBlur(image, blurred_image_, gauss_window_size_, gauss_sigma_);
     compute_color_mask();
 
-    // canny edges within a mask
+    // convert to grayscale and equalize histogram
     cv::cvtColor(blurred_image_, grayscale_image_, cv::COLOR_BGR2GRAY);
+    equalizeHist(grayscale_image_, grayscale_image_);
+
+    // canny edges within a mask
     // set canny thresholds relative to average brightness in masked area - very rough heuristic
     auto avg_brightness = cv::mean(grayscale_image_, mask_)(0);
     cv::Canny(grayscale_image_, edge_mask_,
@@ -84,8 +87,8 @@ void SquareGridDetector::compute_color_mask() {
     cv::inRange(hsv_image_, low_HSV_thresh_, high_HSV_thresh_, mask_);
     // close holes in the mask
     cv::morphologyEx(mask_, mask_, cv::MORPH_CLOSE, morph_close_element_);
-    // dilate to avoid any line detections on the edges of color mask later on
-    cv::dilate(mask_, mask_, morph_close_element_);
+    // erode to avoid any line detections on the edges of color mask later on
+    cv::erode(mask_, mask_, morph_close_element_);
     //TODO: could take the largest contour
 }
 
@@ -135,7 +138,7 @@ std::optional<cv::Point2f> line_intersection(const cv::Vec3f& line1, const cv::V
     cv::Mat b({2, 1}, {rho1, rho2});
     cv::Mat_<float> intersection;
     auto is_valid = cv::solve(m, b, intersection);
-    if (!is_valid){
+    if (!is_valid) {
         return {};
     }
 
@@ -149,16 +152,19 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
     auto line_groups = cluster_lines(lines);
 
     // bounds for performing non-maxima suppression on lines
-    auto nms_intersection_bounds = cv::Rect(cv::Point2i(-(nms_strength_-1) * blurred_image_.cols, -(nms_strength_-1) * blurred_image_.rows),
-                                            cv::Point2i(nms_strength_ * blurred_image_.cols, nms_strength_ * blurred_image_.rows));
+    auto nms_intersection_bounds = cv::Rect(
+            cv::Point2i(-(nms_strength_ - 1) * blurred_image_.cols, -(nms_strength_ - 1) * blurred_image_.rows),
+            cv::Point2i(nms_strength_ * blurred_image_.cols, nms_strength_ * blurred_image_.rows));
 
     // filter lines
     for (auto& line_group: line_groups) {
         // median angle in the group (approximate for even-sized groups)
-        auto median_offset = line_group.size()/2;
+        auto median_offset = line_group.size() / 2;
         std::nth_element(line_group.begin(), line_group.begin() + median_offset, line_group.end(),
-                         [](const auto& line1, const auto& line2) { return angle_dist_convert(line1[1]) <
-                                                                                angle_dist_convert(line2[1]); });
+                         [](const auto& line1, const auto& line2) {
+                             return angle_dist_convert(line1[1]) <
+                                    angle_dist_convert(line2[1]);
+                         });
         auto median_angle = angle_dist_convert(line_group[median_offset][1]);
 
         // remove lines whose angle is too different from median
@@ -186,7 +192,7 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
                                     if (!inters) {
                                         // assume parallel lines, compare based on rho &
                                         // very rough size-scaling heuristic threshold
-                                        return std::abs(l1[0] - l2[0]) < blurred_image_.cols/100.;
+                                        return std::abs(l1[0] - l2[0]) < blurred_image_.cols / 100.;
                                     }
                                     auto intersection_point = inters.value();
                                     return nms_intersection_bounds.contains(intersection_point);
@@ -210,7 +216,7 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
     for (const auto& line1: line_groups[0]) {
         for (const auto& line2: line_groups[1]) {
             auto intersection = line_intersection(line1, line2);
-            if (intersection){
+            if (intersection) {
                 intersections.push_back(intersection.value());
             }
         }
@@ -223,7 +229,7 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
                          DEBUG_LINE_THICKNESS / debug_scale_, cv::Scalar(0, 255, 0));
         for (const auto& point: intersections) {
             cv::drawMarker(debug_imgs_[5], point, cv::Scalar(0, 255, 0), cv::MARKER_CROSS,
-                           3*DEBUG_LINE_THICKNESS / debug_scale_, DEBUG_LINE_THICKNESS / debug_scale_);
+                           3 * DEBUG_LINE_THICKNESS / debug_scale_, DEBUG_LINE_THICKNESS / debug_scale_);
         }
     }
 
