@@ -9,6 +9,8 @@
 #include <optional>
 
 const int DEBUG_LINE_THICKNESS = 3;
+const std::string DEBUG_IMAGE_TITLES[] = {"Blurred image", "Color mask", "Edges", "Lines", "Clustered & filtered lines",
+                                          "Intersections"};
 
 SquareGridDetector::SquareGridDetector(cv::Scalar low_HSV_thresh, cv::Scalar high_HSV_thresh,
                                        int min_visible_lines, double angle_tolerance,
@@ -244,9 +246,15 @@ std::vector<cv::Point2f> SquareGridDetector::grid_points(const std::vector<cv::V
 
 /**
  * Concatenates all debug images (blurred image, mask, edges, lines, filtered/grouped lines, intersections)
- * in a grid/subplot and returns resulting debug image.
+ * in a grid/subplot and returns resulting debug image. Also adds titles to each subimage.
  */
 cv::Mat SquareGridDetector::debug_image() {
+    for (int i=0; i<debug_imgs_.size(); ++i){
+        auto& img = debug_imgs_[i];
+        cv::putText(img, DEBUG_IMAGE_TITLES[i], {img.cols / 10, img.rows / 10}, cv::FONT_HERSHEY_SIMPLEX, 1,
+                    {0, 0, 255}, DEBUG_LINE_THICKNESS);
+    }
+
     cv::Mat first_row, second_row, result, result_scaled;
     cv::hconcat(debug_imgs_.data(), 3, first_row);
     cv::hconcat(debug_imgs_.data() + 3, 3, second_row);
