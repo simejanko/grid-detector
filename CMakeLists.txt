@@ -6,6 +6,6 @@ include_directories( ${OpenCV_INCLUDE_DIRS} )
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(square_grid_measurer main.cpp square-grid-measurer/detector.cpp square-grid-measurer/measurer.cpp)
+add_executable(square_grid_measurer main.cpp grid-detector/detector.cpp)
 target_link_libraries(square_grid_measurer ${OpenCV_LIBS} )
 

@@ -2,7 +2,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/videoio.hpp>
 
-#include "square-grid-measurer/detector.hpp"
+#include "grid-detector/detector.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
