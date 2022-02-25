@@ -2,8 +2,9 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/videoio.hpp>
 
-#include "grid-detector/detector.hpp"
+#include "../grid-detector/detector.hpp"
 
+/** Accepts path to video or OpenCV camera id as input, performs grid detection and displays debug image. */
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Requires one argument: path to video or OpenCV camera id" << std::endl;
@@ -24,8 +25,8 @@ int main(int argc, char* argv[]) {
         return 2;
     }
 
-    SquareGridDetector detector(cv::Scalar_(0, 0, 60), cv::Scalar(179, 140, 255), 2, CV_PI / 10, 150, 0.5, 1.0, 1, 5, 1,
-                                3, true);
+    GridDetector detector(cv::Scalar_(0, 0, 60), cv::Scalar(179, 140, 255), 2, CV_PI / 10, 150, 0.5, 1.0, 1, 5, 1,
+                          3, true);
     cv::Mat frame;
     while (cap.read(frame)) {
         if (frame.empty()) {
