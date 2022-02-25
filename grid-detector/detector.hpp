@@ -60,7 +60,7 @@ namespace grid_detector {
          * Filters a group of lines (vertical/horizontal) based on angle deviation from median angle and
          * intersection-based non-maxima suppression.
          */
-        void filter_line_group(std::vector<cv::Vec3f>& line_group);
+        void filter_line_group(std::vector<cv::Vec3f>& line_group) const;
 
         /**
          * Computes grid line intersections, given raw Hough line detections.

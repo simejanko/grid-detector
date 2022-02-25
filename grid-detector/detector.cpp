@@ -146,7 +146,7 @@ namespace grid_detector {
         return {cv::Point2f(intersection(0, 0), intersection(1, 0))};
     }
 
-    void GridDetector::filter_line_group(std::vector<cv::Vec3f>& line_group) {
+    void GridDetector::filter_line_group(std::vector<cv::Vec3f>& line_group) const {
         // bounds for performing non-maxima suppression on line_group
         auto nms_intersection_bounds = cv::Rect(
                 cv::Point2i(-(nms_strength_ - 1) * blurred_image_.cols, -(nms_strength_ - 1) * blurred_image_.rows),
