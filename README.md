@@ -1,5 +1,6 @@
 # Grid Detector
-OpenCV grid detector. Not meant as a very robust/efficient detector, but used as a toy project to brush up on OpenCV image processing basics.
+OpenCV grid detector. A toy project to brush up on OpenCV image processing basics, 
+not meant as a very robust/efficient detector.
 
 ![Example](example.gif)
 
