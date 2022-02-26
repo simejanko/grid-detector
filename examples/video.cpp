@@ -2,7 +2,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/videoio.hpp>
 
-#include "../grid-detector/detector.hpp"
+#include "detector.hpp"
 
 /** Accepts path to video or OpenCV camera id as input, performs grid detection and displays debug image. */
 int main(int argc, char* argv[]) {
