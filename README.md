@@ -7,7 +7,7 @@ not meant as a very robust/efficient detector.
 ## Example usage
 
 ```c++
-grid_detector::GridDetector detector(); // see docstrings to set non-default params
+grid_detector::GridDetector detector; // see docstrings to set non-default params
 cv::Mat image = ...;
 std::vector<cv::Point2f> corners = detector.detect(image);
 ```
