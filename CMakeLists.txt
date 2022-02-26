@@ -8,6 +8,5 @@ link_libraries(${OpenCV_LIBS})
 
 add_subdirectory(grid_detector)
 link_libraries(grid_detector)
-include_directories("${PROJECT_SOURCE_DIR}/grid_detector")
 
 add_subdirectory(examples)
