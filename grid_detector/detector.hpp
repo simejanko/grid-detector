@@ -7,9 +7,9 @@
 #include <opencv2/core/types.hpp>
 
 namespace grid_detector {
-/**
- * Grid pattern detector for BGR images. Specifically outputs grid line intersection points on a detected grid.
- */
+    /**
+     * Grid pattern detector for BGR images. Specifically outputs grid line intersection points on a detected grid.
+     */
     class GridDetector {
     public:
         /**

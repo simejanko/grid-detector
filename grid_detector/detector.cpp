@@ -1,7 +1,6 @@
 #include "detector.hpp"
 
 #include <cmath>
-#include <list>
 #include <algorithm>
 #include <optional>
 
@@ -14,7 +13,7 @@ namespace grid_detector {
                                               "Clustered & filtered lines",
                                               "Intersections"};
 
-/** Draws hough lines on the image */
+    /** Draws hough lines on the image */
     void draw_hough_lines(const std::vector<cv::Vec3f>& lines, cv::Mat& image, int thickness = DEBUG_LINE_THICKNESS,
                           const cv::Scalar& color = cv::Scalar(0, 255, 0)) {
         for (auto& line: lines) {
@@ -94,15 +93,15 @@ namespace grid_detector {
         cv::erode(mask_, mask_, morph_close_element_);
     }
 
-/**
- * A trick to mirror angles larger than 90 degrees for line angle distances to make sense in euclidean space
- * @param angle angle, between 0 and PI, in radians
- */
+    /**
+     * A trick to mirror angles larger than 90 degrees for line angle distances to make sense in euclidean space
+     * @param angle angle, between 0 and PI, in radians
+     */
     inline float angle_dist_convert(double angle) {
         return angle <= CV_PI / 2 ? angle : CV_PI - angle;
     }
 
-/**  Clusters line detections from Hough transform into 2 groups (presumably horizontal & vertical) based on angles */
+    /**  Clusters line detections from Hough transform into 2 groups (presumably horizontal & vertical) based on angles */
     std::array<std::vector<cv::Vec3f>, 2> cluster_lines(const std::vector<cv::Vec3f>& lines) {
         // extract angles
         std::vector<float> line_angles(lines.size());
@@ -128,10 +127,10 @@ namespace grid_detector {
         return line_groups;
     }
 
-/**
- * Computes intersection of two lines from Hough transform by solving liner system (not the most efficient way).
- * Returns empty optional if no intersection could be computed (e.g. parallel lines).
- */
+    /**
+     * Computes intersection of two lines from Hough transform by solving liner system (not the most efficient way).
+     * Returns empty optional if no intersection could be computed (e.g. parallel lines).
+     */
     std::optional<cv::Point2f> line_intersection(const cv::Vec3f& line1, const cv::Vec3f& line2) {
         auto rho1 = line1[0], theta1 = line1[1];
         auto rho2 = line2[0], theta2 = line2[1];
